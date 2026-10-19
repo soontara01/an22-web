@@ -19,3 +19,21 @@ export function makeDist(): { root: string; distDir: string; cleanup: () => void
   writeFileSync(path.join(root, 'secret.txt'), SECRET);
   return { root, distDir, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
+
+import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
+import { pino } from 'pino';
+import { createApp } from '../src/app.ts';
+import type { Config } from '../src/config.ts';
+
+/** เปิด web จริงบน port สุ่ม (ทดสอบผ่าน fetch / http เหมือน browser) */
+export async function startWeb(config: Partial<Config> & { distDir: string }): Promise<{ url: string; close: () => Promise<void> }> {
+  const full: Config = { port: 0, apiUrl: 'http://127.0.0.1:9', logLevel: 'silent', ...config };
+  const server: Server = createApp(full, pino({ level: 'silent' })).listen(0);
+  await new Promise((resolve) => server.once('listening', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()); }),
+  };
+}
