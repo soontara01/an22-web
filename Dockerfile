@@ -1,6 +1,7 @@
 # image = server + ไฟล์ build ของหน้าบ้าน 1 เวอร์ชัน — สร้างด้วย `npm run docker:build` (คัดลอก dist มาไว้ ./public ก่อน)
 FROM node:24-alpine
-ENV NODE_ENV=production PORT=4000 DIST_DIR=/app/public
+ENV NODE_ENV=production PORT=4000 DIST_DIR=/app/public SESSION_STORE=memory
+# ต้องตั้งตอนรัน: SESSION_SECRET (+ MONGODB_URI เมื่อ SESSION_STORE=mongodb), API_URL — ดู .env.example
 WORKDIR /app
 
 COPY package.json package-lock.json ./
