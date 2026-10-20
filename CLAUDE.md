@@ -44,7 +44,8 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 | `TRUST_PROXY` | `loopback` | ค่า `trust proxy` ของ Express — ตั้งให้ตรงกับ load balancer / reverse proxy หน้า web (ใช้หา IP จริง → `X-Real-IP`, จำกัดจำนวนครั้ง, https) |
 | `AUTH_RATE_LIMIT` | `20` | ครั้งต่อ IP ใน 15 นาที ต่อ path ของ login / สมัคร / ลืม-ตั้งรหัสผ่าน / `auth/verify` / ปลดล็อก POS — `0` = ปิด |
 
-ค่าผิด → `src/config.ts` หยุดตอน start พร้อมข้อความภาษาไทย
+ค่าผิด → `src/config.ts` หยุดตอน start พร้อมข้อความภาษาไทยที่บอกชื่อตัวแปรและค่าที่ต้องเป็น — **ไม่ใส่ค่าที่ตั้งไว้ในข้อความ** (ไปลง log; `MONGODB_URI` / `API_URL` อาจมีรหัสผ่าน);
+`API_URL` ห้ามมี `user:password` (api อยู่ใน network ภายใน และ `apiUrl` ถูกพิมพ์ใน log ตอน start)
 
 ## โครงไฟล์
 
