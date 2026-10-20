@@ -85,4 +85,32 @@ describe('loadConfig', () => {
     assert.throws(() => loadConfig({ ...base(), AUTH_RATE_LIMIT: '-1' }), /AUTH_RATE_LIMIT/);
     assert.equal(loadConfig({ ...base(), AUTH_RATE_LIMIT: '0' }).authRateLimit, 0);
   });
+
+  it('ข้อความ error ไม่มีค่าที่ตั้งไว้ (ไปลง log — อาจมีรหัสผ่าน)', () => {
+    const secret = 's3cret-Pa55';
+    const cases: Record<string, string>[] = [
+      { SESSION_STORE: 'mongodb', MONGODB_URI: `mongo://user:${secret}@db:27017/an22` },
+      { API_URL: `ftp://user:${secret}@api` },
+      { API_URL: `http://user:${secret}@api:8080/x` },
+      { API_URL: `not a url ${secret}` },
+      { PORT: secret },
+      { LOG_LEVEL: secret },
+      { COOKIE_SECURE: secret },
+      { SESSION_SECRET: secret },
+    ];
+    for (const extra of cases) {
+      let message = '';
+      try {
+        loadConfig({ ...base(), ...extra });
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      assert.ok(message, `ต้อง error: ${JSON.stringify(Object.keys(extra))}`);
+      assert.ok(!message.includes(secret), `ข้อความมีค่าลับ: ${message}`);
+    }
+  });
+
+  it('API_URL ห้ามมี user:password (api อยู่ใน network ภายใน)', () => {
+    assert.throws(() => loadConfig({ ...base(), API_URL: 'http://user:pass@api:8080' }), /ห้ามมี user:password/);
+  });
 });

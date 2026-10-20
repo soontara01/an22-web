@@ -39,7 +39,7 @@ describe('security headers', () => {
   it('CSP อนุญาตเฉพาะสคริปต์ของเว็บเรา + inline ที่ hash ตรงกับ index.html, ห้ามฝัง frame', async () => {
     const csp = (await fetch(web.url + '/')).headers.get('content-security-policy')!;
     const hash = createHash('sha256').update(INLINE_SCRIPT).digest('base64');
-    assert.match(csp, new RegExp(`script-src 'self' 'sha256-${hash.replace(/[+/]/g, '\\$&')}'`));
+    assert.ok(csp.includes(`script-src 'self' 'sha256-${hash}'`), csp);
     assert.doesNotMatch(csp, /script-src[^;]*'unsafe-inline'/);
     assert.doesNotMatch(csp, /'unsafe-eval'/);
     assert.match(csp, /frame-ancestors 'none'/);

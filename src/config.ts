@@ -28,11 +28,14 @@ export interface Config {
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'];
 
-/** อ่าน config จาก env var; ค่าผิด → throw พร้อมข้อความที่บอกว่าต้องแก้อะไร */
+/**
+ * อ่าน config จาก env var; ค่าผิด → throw พร้อมข้อความที่บอกว่าตัวแปรไหนผิดและต้องเป็นอะไร —
+ * ไม่ใส่ค่าที่ตั้งไว้ในข้อความ (ข้อความไปลง log ของ container; ค่าอย่าง MONGODB_URI / API_URL อาจมีรหัสผ่าน)
+ */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = Number(env.PORT ?? 4000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`PORT ต้องเป็นเลข 1–65535 (ได้ "${env.PORT}")`);
+    throw new Error(`PORT ต้องเป็นเลข 1–65535`);
   }
 
   const apiUrl = (env.API_URL ?? 'http://localhost:8080').replace(/\/+$/, '');
@@ -40,29 +43,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   try {
     parsed = new URL(apiUrl);
   } catch {
-    throw new Error(`API_URL ไม่ใช่ URL (ได้ "${env.API_URL}")`);
+    throw new Error(`API_URL ไม่ใช่ URL`);
   }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.pathname !== '/') {
-    throw new Error(`API_URL ต้องเป็น origin แบบ http(s)://host:port ไม่มี path (ได้ "${env.API_URL}")`);
+    throw new Error(`API_URL ต้องเป็น origin แบบ http(s)://host:port ไม่มี path`);
+  }
+  if (parsed.username || parsed.password) {
+    // api อยู่ใน network ภายใน (E49) ไม่ต้องใช้ user:password — และ apiUrl ถูกพิมพ์ใน log ตอน start
+    throw new Error('API_URL ห้ามมี user:password');
   }
 
   const distDir = path.resolve(env.DIST_DIR ?? '../FrontEnd-An22/dist/frontend-an22/browser');
   if (!existsSync(path.join(distDir, 'index.html'))) {
-    throw new Error(`DIST_DIR ไม่มี index.html: ${distDir} (build หน้าบ้านก่อน: cd ../FrontEnd-An22 && npm run build)`);
+    throw new Error(`DIST_DIR ไม่มี index.html (build หน้าบ้านก่อน: cd ../FrontEnd-An22 && npm run build)`);
   }
 
   const logLevel = env.LOG_LEVEL ?? 'info';
   if (!LOG_LEVELS.includes(logLevel)) {
-    throw new Error(`LOG_LEVEL ต้องเป็น ${LOG_LEVELS.join(' / ')} (ได้ "${logLevel}")`);
+    throw new Error(`LOG_LEVEL ต้องเป็น ${LOG_LEVELS.join(' / ')}`);
   }
 
   const sessionStore = env.SESSION_STORE ?? 'memory';
   if (sessionStore !== 'memory' && sessionStore !== 'mongodb') {
-    throw new Error(`SESSION_STORE ต้องเป็น memory / mongodb (ได้ "${sessionStore}")`);
+    throw new Error(`SESSION_STORE ต้องเป็น memory / mongodb`);
   }
   const mongodbUri = env.MONGODB_URI || null;
   if (sessionStore === 'mongodb' && !/^mongodb(\+srv)?:\/\//.test(mongodbUri ?? '')) {
-    throw new Error(`SESSION_STORE=mongodb ต้องตั้ง MONGODB_URI เป็น mongodb://… (ได้ "${env.MONGODB_URI ?? ''}")`);
+    throw new Error('SESSION_STORE=mongodb ต้องตั้ง MONGODB_URI เป็น mongodb://… หรือ mongodb+srv://…');
   }
 
   const sessionSecret = env.SESSION_SECRET ?? '';
@@ -78,7 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const secure = env.COOKIE_SECURE ?? 'auto';
   if (!['auto', 'true', 'false'].includes(secure)) {
-    throw new Error(`COOKIE_SECURE ต้องเป็น auto / true / false (ได้ "${secure}")`);
+    throw new Error(`COOKIE_SECURE ต้องเป็น auto / true / false`);
   }
   const cookieSecure = secure === 'auto' ? 'auto' : secure === 'true';
 
@@ -87,7 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const authRateLimit = Number(env.AUTH_RATE_LIMIT ?? 20);
   if (!Number.isInteger(authRateLimit) || authRateLimit < 0) {
-    throw new Error(`AUTH_RATE_LIMIT ต้องเป็นจำนวนเต็มตั้งแต่ 0 (ได้ "${env.AUTH_RATE_LIMIT}")`);
+    throw new Error(`AUTH_RATE_LIMIT ต้องเป็นจำนวนเต็มตั้งแต่ 0`);
   }
 
   return {
@@ -108,6 +115,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 function positive(value: string | undefined, fallback: number, name: string): number {
   const n = Number(value ?? fallback);
-  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} ต้องเป็นตัวเลขมากกว่า 0 (ได้ "${value}")`);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} ต้องเป็นตัวเลขมากกว่า 0`);
   return n;
 }
