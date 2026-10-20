@@ -1,6 +1,7 @@
 import { pino } from 'pino';
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
+import { createSessionStore } from './session.ts';
 
 let config;
 try {
@@ -15,13 +16,19 @@ const logger = pino({
   redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
 });
 
-const server = createApp(config, logger).listen(config.port, () => {
-  logger.info({ port: config.port, apiUrl: config.apiUrl, distDir: config.distDir }, 'an22-web started');
+const sessions = createSessionStore(config);
+const server = createApp(config, logger, sessions.store).listen(config.port, () => {
+  logger.info(
+    { port: config.port, apiUrl: config.apiUrl, distDir: config.distDir, sessionStore: config.sessionStore },
+    'an22-web started',
+  );
 });
 
 function shutdown(signal: string) {
   logger.info({ signal }, 'shutting down');
-  server.close(() => process.exit(0));
+  server.close(() => {
+    sessions.close().finally(() => process.exit(0));
+  });
   server.closeIdleConnections();
   setTimeout(() => process.exit(1), 10_000).unref();
 }
