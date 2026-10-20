@@ -22,6 +22,8 @@ export interface Config {
   cookieSecure: 'auto' | boolean;
   /** ค่า `trust proxy` ของ Express — proxy หน้า web ที่เชื่อ `X-Forwarded-*` */
   trustProxy: boolean | number | string;
+  /** จำนวนครั้งสูงสุดต่อ IP ใน 15 นาที ของ login / สมัคร / ลืม-ตั้งรหัสผ่าน / ตรวจรหัส (POS) — 0 = ปิด */
+  authRateLimit: number;
 }
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'];
@@ -83,6 +85,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const trust = env.TRUST_PROXY ?? 'loopback';
   const trustProxy = trust === 'true' ? true : trust === 'false' ? false : /^\d+$/.test(trust) ? Number(trust) : trust;
 
+  const authRateLimit = Number(env.AUTH_RATE_LIMIT ?? 20);
+  if (!Number.isInteger(authRateLimit) || authRateLimit < 0) {
+    throw new Error(`AUTH_RATE_LIMIT ต้องเป็นจำนวนเต็มตั้งแต่ 0 (ได้ "${env.AUTH_RATE_LIMIT}")`);
+  }
+
   return {
     port,
     apiUrl,
@@ -95,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionMaxDays,
     cookieSecure,
     trustProxy,
+    authRateLimit,
   };
 }
 

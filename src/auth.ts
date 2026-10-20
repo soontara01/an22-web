@@ -1,8 +1,8 @@
 import express, { type Request, Router } from 'express';
 import type { Logger } from 'pino';
 import type { Config } from './config.ts';
-import { API_DOWN, API_TIMEOUT_MS, tokenSlot } from './http.ts';
-import { SESSION_COOKIE } from './session.ts';
+import { API_DOWN, API_TIMEOUT_MS, clientHeaders, tokenSlot } from './http.ts';
+import { sessionCookieName } from './session.ts';
 
 /** path ที่ api ตอบพร้อม `token` — web เก็บ token ไว้ใน session แล้วตัดออกจากคำตอบ (E48) */
 const LOGIN_PATHS = ['/api/auth/login', '/api/auth/signup', '/api/platform/auth/login'];
@@ -72,7 +72,12 @@ export function authRoutes(config: Config, logger: Logger): Router {
     const done = () => res.set('Cache-Control', 'no-store').json(null);
     if (req.session.shopToken || req.session.platformToken) return req.session.save(() => done());
     req.session.destroy(() => {
-      res.clearCookie(SESSION_COOKIE, { path: '/', httpOnly: true, sameSite: 'lax' });
+      res.clearCookie(sessionCookieName(config), {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.cookieSecure === 'auto' ? req.secure : config.cookieSecure,
+      });
       done();
     });
   });
@@ -80,15 +85,12 @@ export function authRoutes(config: Config, logger: Logger): Router {
   return router;
 }
 
-/** header ที่ api ควรรู้: ชนิด body, request id, ผู้เรียกจริง (เหมือน `xfwd` ของ proxy) — ไม่ส่ง cookie / Authorization ของ browser */
+/** header ที่ api ควรรู้: ชนิด body, request id + ผู้เรียกจริงตามที่ web เชื่อ (`clientHeaders()`) — ไม่ส่ง cookie / Authorization ของ browser */
 function forwardHeaders(req: Request): Record<string, string> {
-  const forwardedFor = [req.headers['x-forwarded-for'], req.socket.remoteAddress].filter(Boolean).join(', ');
   return {
     'content-type': 'application/json',
     accept: 'application/json',
     'x-request-id': String(req.id),
-    'x-forwarded-for': forwardedFor,
-    'x-forwarded-proto': req.protocol,
-    'x-forwarded-host': req.get('host') ?? '',
+    ...clientHeaders(req),
   };
 }

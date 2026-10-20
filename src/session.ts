@@ -16,7 +16,12 @@ declare module 'express-session' {
   }
 }
 
-export const SESSION_COOKIE = 'an22.sid';
+/**
+ * ชื่อ cookie session: บน https (`COOKIE_SECURE=true`) ใช้ prefix `__Host-` — browser รับเฉพาะ cookie ที่ Secure, path=/
+ * ไม่มี Domain จึงไม่มี subdomain ไหนฝัง / ทับ cookie นี้ได้; `auto` / `false` ใช้ชื่อธรรมดา (prefix บังคับ Secure ทุกครั้ง)
+ */
+export const sessionCookieName = (config: Pick<Config, 'cookieSecure'>): string =>
+  config.cookieSecure === true ? '__Host-an22.sid' : 'an22.sid';
 
 export interface SessionStore {
   store: session.Store;
@@ -73,7 +78,7 @@ export function sessionMiddleware(config: Config, store: session.Store): Request
   const maxAgeMs = config.sessionMaxDays * 86_400_000;
   return [
     session({
-      name: SESSION_COOKIE,
+      name: sessionCookieName(config),
       secret: config.sessionSecret,
       store,
       resave: false,
