@@ -1,0 +1,29 @@
+# dev / test: MongoDB สำหรับ SESSION_STORE=mongodb (E48)
+#   docker compose up -d mongo
+#   TEST_MONGODB_URI=mongodb://127.0.0.1:27017/an22-test npm test
+# web ใน container ด้วย (build จาก ./public — npm run docker:build ก่อน): SESSION_SECRET=... docker compose --profile web up -d
+services:
+  mongo:
+    image: mongo:8.0
+    ports:
+      - '127.0.0.1:27017:27017'
+    volumes:
+      - mongo-data:/data/db
+
+  web:
+    profiles: [web]
+    build: .
+    ports:
+      - '4000:4000'
+    environment:
+      SESSION_STORE: mongodb
+      MONGODB_URI: mongodb://mongo:27017/an22
+      SESSION_SECRET: ${SESSION_SECRET:-} # ไม่ตั้ง → web ไม่ start และบอกวิธีสร้าง
+      API_URL: ${API_URL:-http://host.docker.internal:8080}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - mongo
+
+volumes:
+  mongo-data:

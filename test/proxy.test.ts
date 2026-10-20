@@ -1,51 +1,20 @@
 import assert from 'node:assert/strict';
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { INDEX_HTML, makeDist, startWeb } from './fixtures.ts';
-
-interface Seen {
-  method: string;
-  url: string;
-  headers: IncomingHttpHeaders;
-  body: string;
-}
-
-/** api ปลอม: จำ request ล่าสุด แล้วตอบตาม path */
-async function startFakeApi(): Promise<{ url: string; seen: Seen[]; close: () => Promise<void> }> {
-  const seen: Seen[] = [];
-  const server: Server = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => (body += c));
-    req.on('end', () => {
-      seen.push({ method: req.method!, url: req.url!, headers: req.headers, body });
-      if (req.url === '/api/me' && !req.headers.authorization) {
-        res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'กรุณาเข้าสู่ระบบ' }));
-      } else if (req.url!.startsWith('/api/nope')) {
-        res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'ไม่พบข้อมูล' }));
-      } else {
-        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Api': 'fake' }).end(JSON.stringify({ ok: true, echo: body }));
-      }
-    });
-  }).listen(0);
-  await new Promise((resolve) => server.once('listening', resolve));
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${port}`,
-    seen,
-    close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()); }),
-  };
-}
+import { Browser, type FakeApi, INDEX_HTML, type Web, deadPort, makeDist, startFakeApi, startWeb } from './fixtures.ts';
 
 describe('proxy /api → api', () => {
   const dist = makeDist();
-  let api: Awaited<ReturnType<typeof startFakeApi>>;
-  let web: Awaited<ReturnType<typeof startWeb>>;
+  let api: FakeApi;
+  let web: Web;
+  let browser: Browser;
   before(async () => {
     api = await startFakeApi();
     web = await startWeb({ distDir: dist.distDir, apiUrl: api.url });
   });
-  beforeEach(() => (api.seen.length = 0));
+  beforeEach(async () => {
+    api.seen.length = 0;
+    browser = await new Browser(web.url).open();
+  });
   after(async () => {
     await web.close();
     await api.close();
@@ -53,54 +22,56 @@ describe('proxy /api → api', () => {
   });
 
   it('GET: คง path /api + query และส่ง header ของหน้าบ้านครบ', async () => {
-    const res = await fetch(web.url + '/api/products?q=%E0%B8%81&page=2', {
-      headers: { Authorization: 'Bearer t1', 'X-Branch-Id': 'HQ', 'X-Terminal-Id': '2' },
-    });
+    const res = await browser.get('/api/products?q=%E0%B8%81&page=2', { 'X-Branch-Id': 'HQ', 'X-Terminal-Id': '2' });
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('x-api'), 'fake');
     assert.deepEqual(await res.json(), { ok: true, echo: '' });
     const [r] = api.seen;
     assert.equal(r.method, 'GET');
     assert.equal(r.url, '/api/products?q=%E0%B8%81&page=2');
-    assert.equal(r.headers.authorization, 'Bearer t1');
     assert.equal(r.headers['x-branch-id'], 'HQ');
     assert.equal(r.headers['x-terminal-id'], '2');
     assert.ok(r.headers['x-forwarded-for']);
   });
 
   it('POST JSON: body ถึง api ครบ', async () => {
-    const body = JSON.stringify({ companyCode: 'DEMO', username: 'admin', password: 'admin' });
-    const res = await fetch(web.url + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    const body = { name: 'เมาส์', price: 531 };
+    const res = await browser.post('/api/products', body);
     assert.equal(res.status, 200);
-    assert.equal((await res.json()).echo, body);
+    assert.equal((await res.json()).echo, JSON.stringify(body));
     assert.equal(api.seen[0].method, 'POST');
     assert.equal(api.seen[0].headers['content-type'], 'application/json');
   });
 
   for (const method of ['PUT', 'PATCH', 'DELETE']) {
     it(`${method} ผ่าน proxy`, async () => {
-      const res = await fetch(web.url + '/api/products/1', { method, body: method === 'DELETE' ? undefined : '{}' });
+      const res = await browser.request(method, '/api/products/1', { body: method === 'DELETE' ? undefined : {} });
       assert.equal(res.status, 200);
       assert.equal(api.seen[0].method, method);
     });
   }
 
   it('status + body ของ api (401 / 404) ส่งกลับตรง ๆ ไม่ตกไป index.html', async () => {
-    const r401 = await fetch(web.url + '/api/me');
+    const r401 = await browser.get('/api/me');
     assert.equal(r401.status, 401);
-    assert.deepEqual(await r401.json(), { message: 'กรุณาเข้าสู่ระบบ' });
-    const r404 = await fetch(web.url + '/api/nope');
+    assert.deepEqual(await r401.json(), { message: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' });
+    const r404 = await browser.get('/api/nope');
     assert.equal(r404.status, 404);
     assert.deepEqual(await r404.json(), { message: 'ไม่พบข้อมูล' });
   });
 
+  it('cookie ของ api ไม่ถึง browser', async () => {
+    const res = await browser.get('/api/products');
+    assert.ok(!res.headers.getSetCookie().some((c) => c.startsWith('api=')));
+  });
+
   it('/api เปล่า ๆ ก็ไปที่ api', async () => {
-    await fetch(web.url + '/api');
+    await browser.get('/api');
     assert.equal(api.seen[0]?.url, '/api');
   });
 
   it('/apix ไม่ใช่ /api → ไม่ proxy', async () => {
-    const res = await fetch(web.url + '/apix/products');
+    const res = await browser.get('/apix/products');
     assert.equal(api.seen.length, 0);
     assert.equal(await res.text(), INDEX_HTML);
   });
@@ -108,14 +79,9 @@ describe('proxy /api → api', () => {
 
 describe('proxy เมื่อ api ล่ม', () => {
   const dist = makeDist();
-  let web: Awaited<ReturnType<typeof startWeb>>;
+  let web: Web;
   before(async () => {
-    // port ที่ไม่มีใครฟัง: เปิดแล้วปิดทันที
-    const s = createServer().listen(0);
-    await new Promise((r) => s.once('listening', r));
-    const { port } = s.address() as AddressInfo;
-    await new Promise((r) => s.close(r));
-    web = await startWeb({ distDir: dist.distDir, apiUrl: `http://127.0.0.1:${port}` });
+    web = await startWeb({ distDir: dist.distDir, apiUrl: `http://127.0.0.1:${await deadPort()}` });
   });
   after(async () => {
     await web.close();
@@ -127,6 +93,14 @@ describe('proxy เมื่อ api ล่ม', () => {
     assert.equal(res.status, 502);
     assert.match(res.headers.get('content-type')!, /application\/json/);
     assert.deepEqual(await res.json(), { message: 'ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่' });
+  });
+
+  it('login ตอน api ล่ม → 502 JSON', async () => {
+    const browser = await new Browser(web.url).open();
+    const res = await browser.post('/api/auth/login', { companyCode: 'DEMO', username: 'admin', password: 'admin' });
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), { message: 'ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่' });
+    assert.ok(!browser.cookies.has('an22.sid'));
   });
 
   it('หน้าเว็บยังโหลดได้', async () => {
