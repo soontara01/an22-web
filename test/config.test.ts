@@ -23,6 +23,7 @@ describe('loadConfig', () => {
       sessionMaxDays: 7,
       cookieSecure: 'auto',
       trustProxy: 'loopback',
+      authRateLimit: 20,
     });
   });
 
@@ -81,5 +82,7 @@ describe('loadConfig', () => {
     assert.throws(() => loadConfig({ ...base(), SESSION_MAX_DAYS: 'x' }), /SESSION_MAX_DAYS/);
     assert.throws(() => loadConfig({ ...base(), SESSION_IDLE_HOURS: '48', SESSION_MAX_DAYS: '1' }), /SESSION_IDLE_HOURS/);
     assert.throws(() => loadConfig({ ...base(), COOKIE_SECURE: 'yes' }), /COOKIE_SECURE/);
+    assert.throws(() => loadConfig({ ...base(), AUTH_RATE_LIMIT: '-1' }), /AUTH_RATE_LIMIT/);
+    assert.equal(loadConfig({ ...base(), AUTH_RATE_LIMIT: '0' }).authRateLimit, 0);
   });
 });

@@ -10,7 +10,8 @@ import { pinoHttp } from 'pino-http';
 import { authRoutes } from './auth.ts';
 import type { Config } from './config.ts';
 import { createCsrf } from './csrf.ts';
-import { API_DOWN, API_TIMEOUT_MS, isApiPath, tokenSlot } from './http.ts';
+import { API_DOWN, API_TIMEOUT_MS, clientHeaders, isApiPath, tokenSlot } from './http.ts';
+import { authRateLimiter, redactUrl, securityHeaders } from './security.ts';
 import { sessionMiddleware } from './session.ts';
 
 /** ไฟล์ที่ Angular ใส่ hash ในชื่อ (`main-EXTO3ZN5.js`, `chunk-0vy21Nd2.js`, `styles-KW4BQYMB.css`) — เนื้อหาไม่มีวันเปลี่ยน */
@@ -28,10 +29,7 @@ export function createApp(config: Config, logger: Logger, store: session.Store):
   app.set('trust proxy', config.trustProxy); // req.secure / req.ip ตาม X-Forwarded-* ของ proxy ที่เชื่อ
   const csrf = createCsrf(config);
 
-  app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    next();
-  });
+  app.use(securityHeaders(config));
 
   app.use(
     pinoHttp({
@@ -42,9 +40,9 @@ export function createApp(config: Config, logger: Logger, store: session.Store):
         res.setHeader('X-Request-Id', id);
         return id;
       },
-      // log สั้น ๆ: ไม่เก็บ header ทั้งชุด (มี token) — ดู request ต่อเนื่องด้วย req.id
+      // log สั้น ๆ: ไม่เก็บ header ทั้งชุด (มี token), query ที่เป็นความลับเป็น *** — ดู request ต่อเนื่องด้วย req.id
       serializers: {
-        req: (req) => ({ id: req.id, method: req.method, url: req.url, ip: req.remoteAddress, ua: req.headers['user-agent'] }),
+        req: (req) => ({ id: req.id, method: req.method, url: redactUrl(req.url), ip: req.remoteAddress, ua: req.headers['user-agent'] }),
         res: (res) => ({ statusCode: res.statusCode }),
       },
       customLogLevel: (req, res, err) => {
@@ -63,6 +61,8 @@ export function createApp(config: Config, logger: Logger, store: session.Store):
 
   // session (cookie httpOnly, E48) + CSRF เฉพาะ /api — ไฟล์ static ไม่แตะ store
   app.use('/api', csrf.issue, ...sessionMiddleware(config, store), csrf.verify);
+  // เดารหัสผ่าน: จำกัดต่อ IP ก่อนถึง login (web) และ auth/verify / ปลดล็อก POS (proxy)
+  app.use(authRateLimiter(config));
   // login / signup / platform login / logout: web ทำเอง (เก็บ token ใน session) — ก่อน proxy
   app.use(authRoutes(config, logger));
 
@@ -73,7 +73,7 @@ export function createApp(config: Config, logger: Logger, store: session.Store):
       target: config.apiUrl,
       pathFilter: (p) => isApiPath(p),
       changeOrigin: true,
-      xfwd: true,
+      xfwd: false, // ใส่ X-Forwarded-* เองจาก req.ip (ไม่ต่อท้ายค่าที่ browser ปลอมมา)
       proxyTimeout: API_TIMEOUT_MS,
       ejectPlugins: true, // ไม่เอา logger ของ http-proxy-middleware (pino-http log ให้แล้ว)
       plugins: [debugProxyErrorsPlugin, proxyEventsPlugin],
@@ -82,12 +82,15 @@ export function createApp(config: Config, logger: Logger, store: session.Store):
         proxyReq: (proxyReq, req) => {
           proxyReq.removeHeader('cookie');
           proxyReq.removeHeader('authorization');
+          for (const [name, value] of Object.entries(clientHeaders(req as Request))) proxyReq.setHeader(name, value);
           const token = (req as Request).session?.[tokenSlot(pathOf(req))];
           if (token) proxyReq.setHeader('Authorization', `Bearer ${token}`);
         },
         // api บอกว่า token ใช้ไม่ได้แล้ว (หมดอายุ / ผู้ใช้ถูกปิด) → ลืม token ช่องนั้น; cookie ของ api ไม่ส่งถึง browser
         proxyRes: (proxyRes, req) => {
           delete proxyRes.headers['set-cookie'];
+          // ข้อมูลของร้าน (ทุน, ผู้ซื้อ …) ไม่ลง cache ของเบราว์เซอร์ ถ้า api ไม่ได้กำหนดเอง
+          proxyRes.headers['cache-control'] ??= 'no-store';
           const sess = (req as Request).session;
           const slot = tokenSlot(pathOf(req));
           if (proxyRes.statusCode === 401 && sess?.[slot]) {

@@ -41,7 +41,8 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 | `SESSION_IDLE_HOURS` | `12` | ไม่ใช้งานนานเท่านี้ → หลุด (ใช้งานอยู่ต่ออายุทุก request) |
 | `SESSION_MAX_DAYS` | `7` | นับจาก login เกินเท่านี้ → login ใหม่ |
 | `COOKIE_SECURE` | `auto` | `auto` = Secure เมื่อเป็น https (ตาม `X-Forwarded-Proto` ของ proxy ที่เชื่อ) / `true` / `false` |
-| `TRUST_PROXY` | `loopback` | ค่า `trust proxy` ของ Express — ตั้งให้ตรงกับ load balancer / reverse proxy หน้า web |
+| `TRUST_PROXY` | `loopback` | ค่า `trust proxy` ของ Express — ตั้งให้ตรงกับ load balancer / reverse proxy หน้า web (ใช้หา IP จริง → `X-Real-IP`, จำกัดจำนวนครั้ง, https) |
+| `AUTH_RATE_LIMIT` | `20` | ครั้งต่อ IP ใน 15 นาที ต่อ path ของ login / สมัคร / ลืม-ตั้งรหัสผ่าน / `auth/verify` / ปลดล็อก POS — `0` = ปิด |
 
 ค่าผิด → `src/config.ts` หยุดตอน start พร้อมข้อความภาษาไทย
 
@@ -50,25 +51,33 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 - `src/config.ts` — `loadConfig(env)` อ่าน + ตรวจ env
 - `src/app.ts` — `createApp(config, logger, store)` สร้าง express app (test ใช้ตัวนี้)
 - `src/session.ts` — `createSessionStore()` (memory / MongoDB, `close()` รองานค้างก่อนปิด), `sessionMiddleware()` (cookie + อายุ 7 วัน)
-- `src/auth.ts` — login / signup / platform login / logout แบบ BFF; `src/csrf.ts` — XSRF-TOKEN; `src/http.ts` — ค่ากลาง (`tokenSlot()`, 502)
+- `src/auth.ts` — login / signup / platform login / logout แบบ BFF; `src/csrf.ts` — XSRF-TOKEN; `src/http.ts` — ค่ากลาง (`tokenSlot()`, `clientHeaders()`, 502)
+- `src/security.ts` — header ความปลอดภัย + CSP, `redactUrl()` ของ log, `authRateLimiter()`
 - `src/server.ts` — entry: listen + graceful shutdown (SIGTERM / SIGINT, ปิด store)
-- `test/fixtures.ts` — dist ปลอม (+ ไฟล์ลับนอก dist), `startWeb()`, `Browser`, `startFakeApi()`; `test/*.test.ts` — config / static / proxy / session / store
+- `test/fixtures.ts` — dist ปลอม (+ ไฟล์ลับนอก dist), `startWeb()`, `Browser`, `startFakeApi()`; `test/*.test.ts` — config / static / proxy / session / store / security
 - `compose.yaml` — MongoDB สำหรับ dev / test (+ web แบบ `--profile web`)
 - `Dockerfile`, `scripts/docker-build.sh` — image = server + dist 1 เวอร์ชัน (rollback ด้วย tag)
 
 ## กฎ (ลำดับ middleware ใน `createApp`)
 
+0. **header ความปลอดภัยทุกคำตอบ** (`src/security.ts`): Content-Security-Policy (สคริปต์ของเว็บเรา + inline ใน index.html ที่ hash ตรง — คำนวณจากไฟล์ตอน start,
+   style inline + Google Fonts, รูป `data:` / `blob:`, `connect-src 'self'`, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options`,
+   `Referrer-Policy: same-origin`, `Cross-Origin-Opener-Policy` / `-Resource-Policy: same-origin`, `Permissions-Policy` (ปิดกล้อง / ไมค์ / ตำแหน่ง …), HSTS เมื่อเป็น https
+   — หน้าบ้านใช้ `eval` / สคริปต์ inline ใหม่ / โหลดจากโดเมนอื่นไม่ได้ถ้าไม่แก้ CSP ตรงนี้
 1. `GET /healthz` → `200 {"status":"ok"}` — liveness, ไม่เรียก api (web ยังทำงานได้แม้ api ล่ม); log ระดับ debug
 2. **session + CSRF เฉพาะ `/api`** (E48 — `api-contract.md` หัวข้อ "Session"):
-   - cookie `an22.sid` (httpOnly, SameSite=Lax, Secure ตาม `COOKIE_SECURE`) สร้างเมื่อ login เท่านั้น; session มี `shopToken` / `platformToken` (แยกช่อง) + `createdAt`
+   - cookie `an22.sid` (httpOnly, SameSite=Lax, Secure ตาม `COOKIE_SECURE`; `COOKIE_SECURE=true` → ชื่อ `__Host-an22.sid`) สร้างเมื่อ login เท่านั้น; session มี `shopToken` / `platformToken` (แยกช่อง) + `createdAt`
    - `XSRF-TOKEN` (อ่านได้, = nonce + HMAC) ตั้งบน `/api` และ index.html; POST / PUT / PATCH / DELETE ต้องมี `X-XSRF-TOKEN` ตรงกัน ไม่งั้น `403 {"message":"คำขอไม่ถูกต้อง กรุณาโหลดหน้าใหม่"}` (Angular ส่งให้เอง)
 3. **login / logout (BFF, `src/auth.ts`)**: `POST /api/auth/login`, `/api/auth/signup`, `/api/platform/auth/login` → ส่งต่อ api → 2xx มี `token`:
    เปลี่ยน session id, เก็บ token ในช่องของมัน (คงอีกช่อง), ตอบ**โดยไม่มี `token`**; ไม่สำเร็จ → คำตอบของ api ตามเดิม; api ตอบ 2xx ไม่มี token → 502;
    `POST /api/auth/logout`, `/api/platform/auth/logout` → web ตอบ `null` เอง (ลบช่อง; ไม่เหลือ = ทำลาย session + ลบ cookie)
+   - **จำกัดจำนวนครั้ง** (`AUTH_RATE_LIMIT`, ต่อ IP + path, 15 นาที): POST ของ login / signup / forgot / reset / `auth/verify` / platform login / `shifts/:id/unlock`
+     → เกิน = `429 {"message":"พยายามบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่"}` ไม่ถึง api; นับในหน่วยความจำของแต่ละ instance
 4. **proxy `/api`** (`/api` และ `/api/...` เท่านั้น — `/apix` ไม่ใช่): **คง `/api` ไว้** เหมือน `proxy.conf.json` ของหน้าบ้าน;
    ติดที่ root ด้วย `pathFilter` (อย่าเปลี่ยนเป็น `app.use('/api', …)` — Express จะตัด `/api` ทิ้ง); body / header (`X-Branch-Id`, `X-Terminal-Id`) ส่งแบบ stream ไม่แตะ
    (อย่าใส่ body parser ก่อน proxy — ยกเว้น route login ข้างบน); **ทิ้ง `Authorization` / `Cookie` ของ browser แล้วใส่ `Authorization: Bearer` จาก session**
-   (`/api/platform/**` = ช่อง platform); api ตอบ 401 → ลืม token ช่องนั้น; `Set-Cookie` ของ api ไม่ส่งต่อ;
+   (`/api/platform/**` = ช่อง platform); **`X-Forwarded-For` / `X-Real-IP` / `-Proto` / `-Host` ใส่ใหม่จาก `req.ip`** (ไม่ต่อท้ายค่าที่ browser ปลอมมา — `xfwd: false`);
+   api ตอบ 401 → ลืม token ช่องนั้น; `Set-Cookie` ของ api ไม่ส่งต่อ; คำตอบที่ api ไม่ได้ใส่ `Cache-Control` → `no-store`;
    api ล่ม / เกิน 60 วิ → `502 {"message":"ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่"}` (รูปแบบ error ตาม `api-contract.md`); `/api` ไม่ตกไป index.html เด็ดขาด
 5. **static** จาก `DIST_DIR` (`express.static` / `send` กัน `..`, null byte, dotfile — ไม่มีอะไรนอก dist หลุดออกไป)
    - ชื่อมี hash 8 ตัว (`main-XXXXXXXX.js`, `chunk-XXXXXXXX.js`, `styles-XXXXXXXX.css`) → `Cache-Control: public, max-age=31536000, immutable`
@@ -77,7 +86,7 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
    — ทุกเมนูของหน้าบ้านเป็น full page reload ("SPA per menu" ใน `../FrontEnd-An22/CLAUDE.md`) จึงผ่านตรงนี้ทุกครั้งที่เปลี่ยนเมนู;
    path ที่ดูเป็นไฟล์แต่ไม่มี (chunk ของ build เก่า) → **404 ไม่ใช่ HTML**; decode ไม่ได้ → 400; method อื่น → 404
 7. log ต่อ request 1 บรรทัด: `req.id` (รับ `X-Request-Id` ของ client ถ้ารูปแบบถูก ไม่งั้นสุ่ม, ส่งกลับใน header), method, url, ip, status, เวลา —
-   **ไม่ log header** (มี token); 5xx = error, 4xx = warn
+   **ไม่ log header** (มี token), **ค่า query ที่เป็นความลับเป็น `***`** (`token` / `code` / `password` — ลิงก์ตั้งรหัสผ่านใหม่); 5xx = error, 4xx = warn
 
 เปลี่ยนกฎข้อไหน → แก้ test ที่ตรงกันใน commit เดียวกัน; ถ้ากระทบหน้าบ้าน (path, header, cache) → แก้ `../FrontEnd-An22/docs/backend/README.md` / `deploy/` ด้วย (บอกผู้ใช้ก่อน)
 

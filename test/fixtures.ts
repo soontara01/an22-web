@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseSetCookie } from 'cookie';
 import type session from 'express-session';
-import { pino } from 'pino';
+import { type Logger, pino } from 'pino';
 import { createApp } from '../src/app.ts';
 import type { Config } from '../src/config.ts';
 import { createSessionStore } from '../src/session.ts';
 
-export const INDEX_HTML = '<!doctype html><html><body><app-root></app-root></body></html>';
+/** มี `<script>` inline 1 ตัวเหมือน build จริง (Angular ใส่ตอน inline critical CSS) — CSP ต้องอนุญาตด้วย hash */
+export const INLINE_SCRIPT = "document.title='an22'";
+export const INDEX_HTML = `<!doctype html><html><head><script>${INLINE_SCRIPT}</script></head><body><app-root></app-root></body></html>`;
 export const SECRET = 'SECRET-OUTSIDE-DIST';
 export const SESSION_SECRET = 'test-secret-test-secret-test-secret-0123';
 
@@ -43,6 +45,7 @@ export interface Web {
 export async function startWeb(
   config: Partial<Config> & { distDir: string },
   store?: session.Store,
+  logger: Logger = pino({ level: 'silent' }),
 ): Promise<Web> {
   const full: Config = {
     port: 0,
@@ -55,11 +58,12 @@ export async function startWeb(
     sessionMaxDays: 7,
     cookieSecure: 'auto',
     trustProxy: 'loopback',
+    authRateLimit: 0,
     ...config,
   };
   const own = store ? null : createSessionStore(full);
   const sessions = store ?? own!.store;
-  const server: Server = createApp(full, pino({ level: 'silent' }), sessions).listen(0);
+  const server: Server = createApp(full, logger, sessions).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   const { port } = server.address() as AddressInfo;
   return {
@@ -171,6 +175,7 @@ export async function startFakeApi(): Promise<FakeApi> {
         return json(res, 200, { auth });
       }
       if (url.startsWith('/api/nope')) return json(res, 404, { message: 'ไม่พบข้อมูล' });
+      if (url === '/api/cached') return json(res, 200, { ok: true }, { 'Cache-Control': 'private, max-age=60' });
       return json(res, 200, { ok: true, echo: body }, { 'X-Api': 'fake', 'Set-Cookie': 'api=1' });
     });
   }).listen(0);
