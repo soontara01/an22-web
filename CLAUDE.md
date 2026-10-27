@@ -42,7 +42,7 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 | `SESSION_MAX_DAYS` | `7` | นับจาก login เกินเท่านี้ → login ใหม่ |
 | `COOKIE_SECURE` | `auto` | `auto` = Secure เมื่อเป็น https (ตาม `X-Forwarded-Proto` ของ proxy ที่เชื่อ) / `true` / `false` |
 | `TRUST_PROXY` | `loopback` | ค่า `trust proxy` ของ Express — ตั้งให้ตรงกับ load balancer / reverse proxy หน้า web (ใช้หา IP จริง → `X-Real-IP`, จำกัดจำนวนครั้ง, https) |
-| `AUTH_RATE_LIMIT` | `20` | ครั้งต่อ IP ใน 15 นาที ต่อ path ของ login / สมัคร / ลืม-ตั้งรหัสผ่าน / `auth/verify` / ปลดล็อก POS — `0` = ปิด |
+| `AUTH_RATE_LIMIT` | `20` | ครั้งต่อ IP ใน 15 นาที ต่อ path ของ login / สมัคร / ลืม-ตั้งรหัสผ่าน / `auth/verify` / ปลดล็อก POS (login / verify / ปลดล็อก นับเฉพาะครั้งที่ไม่ผ่าน) — `0` = ปิด |
 
 ค่าผิด → `src/config.ts` หยุดตอน start พร้อมข้อความภาษาไทยที่บอกชื่อตัวแปรและค่าที่ต้องเป็น — **ไม่ใส่ค่าที่ตั้งไว้ในข้อความ** (ไปลง log; `MONGODB_URI` / `API_URL` อาจมีรหัสผ่าน);
 `API_URL` ห้ามมี `user:password` (api อยู่ใน network ภายใน และ `apiUrl` ถูกพิมพ์ใน log ตอน start)
@@ -72,7 +72,7 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 3. **login / logout (BFF, `src/auth.ts`)**: `POST /api/auth/login`, `/api/auth/signup`, `/api/platform/auth/login` → ส่งต่อ api → 2xx มี `token`:
    เปลี่ยน session id, เก็บ token ในช่องของมัน (คงอีกช่อง), ตอบ**โดยไม่มี `token`**; ไม่สำเร็จ → คำตอบของ api ตามเดิม; api ตอบ 2xx ไม่มี token → 502;
    `POST /api/auth/logout`, `/api/platform/auth/logout` → web ตอบ `null` เอง (ลบช่อง; ไม่เหลือ = ทำลาย session + ลบ cookie)
-   - **จำกัดจำนวนครั้ง** (`AUTH_RATE_LIMIT`, ต่อ IP + path, 15 นาที): POST ของ login / signup / forgot / reset / `auth/verify` / platform login / `shifts/:id/unlock`
+   - **จำกัดจำนวนครั้ง** (`AUTH_RATE_LIMIT`, ต่อ IP + path, 15 นาที): POST ของ login / signup / forgot / reset / `auth/verify` / platform login / `shifts/:id/unlock` — path ที่แค่ตรวจรหัส (login, `auth/verify`, platform login, unlock) นับเฉพาะครั้งที่ตอบ ≥ 400 (`requestWasSuccessful`, C3-7: ร้านหลายคน IP เดียวไม่ชนเพดาน), signup / forgot / reset นับทุกครั้ง
      → เกิน = `429 {"message":"พยายามบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่"}` ไม่ถึง api; นับในหน่วยความจำของแต่ละ instance
 4. **proxy `/api`** (`/api` และ `/api/...` เท่านั้น — `/apix` ไม่ใช่): **คง `/api` ไว้** เหมือน `proxy.conf.json` ของหน้าบ้าน;
    ติดที่ root ด้วย `pathFilter` (อย่าเปลี่ยนเป็น `app.use('/api', …)` — Express จะตัด `/api` ทิ้ง); body / header (`X-Branch-Id`, `X-Terminal-Id`) ส่งแบบ stream ไม่แตะ

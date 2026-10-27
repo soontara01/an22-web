@@ -121,8 +121,38 @@ describe('จำกัดจำนวนครั้งเดารหัส (AU
 
   it('ปลดล็อก POS (/api/shifts/:id/unlock) ก็ถูกจำกัด', async () => {
     const browser = await new Browser(web.url).open();
-    for (let i = 0; i < 3; i++) await browser.post('/api/shifts/7/unlock', {});
+    for (let i = 0; i < 3; i++) await browser.post('/api/shifts/7/unlock', { password: 'bad' });
     assert.equal((await browser.post('/api/shifts/8/unlock', {})).status, 429);
+  });
+});
+
+describe('นับเฉพาะครั้งที่รหัสไม่ผ่าน (C3-7)', () => {
+  const dist = makeDist();
+  let api: FakeApi;
+  let web: Web;
+  before(async () => {
+    api = await startFakeApi();
+    web = await startWeb({ distDir: dist.distDir, apiUrl: api.url, authRateLimit: 3 });
+  });
+  after(async () => {
+    await web.close();
+    await api.close();
+    dist.cleanup();
+  });
+
+  it('login / ปลดล็อกที่ผ่านไม่นับ — พนักงานหลายคนใช้ IP เดียวกันได้ทั้งวัน', async () => {
+    const browser = await new Browser(web.url).open();
+    const ok = { ...LOGIN, password: 'good' };
+    for (let i = 0; i < 6; i++) assert.equal((await browser.post('/api/auth/login', ok)).status, 200);
+    for (let i = 0; i < 3; i++) assert.equal((await browser.post('/api/auth/login', LOGIN)).status, 401);
+    assert.equal((await browser.post('/api/auth/login', ok)).status, 429, 'ผิดครบเพดานแล้ว ถูกก็รอ');
+    for (let i = 0; i < 6; i++) assert.equal((await browser.post('/api/shifts/7/unlock', {})).status, 200);
+  });
+
+  it('สมัคร / ลืมรหัสผ่าน นับทุกครั้งแม้ตอบสำเร็จ', async () => {
+    const browser = await new Browser(web.url).open();
+    for (let i = 0; i < 3; i++) assert.equal((await browser.post('/api/auth/forgot-password', {})).status, 200);
+    assert.equal((await browser.post('/api/auth/forgot-password', {})).status, 429);
   });
 });
 
