@@ -87,14 +87,22 @@ export const RATE_LIMITED_PATHS = [
   '/api/auth/verify',
   '/api/platform/auth/login',
 ];
-const isRateLimited = (p: string) =>
-  RATE_LIMITED_PATHS.includes(p) || /^\/api\/shifts\/\d+\/unlock$/.test(p);
+const isUnlock = (p: string) => /^\/api\/shifts\/\d+\/unlock$/.test(p);
+const isRateLimited = (p: string) => RATE_LIMITED_PATHS.includes(p) || isUnlock(p);
+
+/**
+ * path ที่แค่ตรวจรหัสผ่าน: ครั้งที่ผ่านไม่นับ (C3-7) — ร้านที่พนักงานหลายคนออก internet ทาง IP เดียว
+ * (สลับคนขาย, ปลดล็อกหน้าจอ, เปลี่ยนกะ) ไม่ชนเพดานในวันปกติ. สมัคร / ลืม-ตั้งรหัสผ่านนับทุกครั้ง
+ * (ครั้งที่ "สำเร็จ" สร้างบริษัท / ส่งอีเมล)
+ */
+const PASSWORD_CHECK_PATHS = ['/api/auth/login', '/api/auth/verify', '/api/platform/auth/login'];
+const isPasswordCheck = (p: string) => PASSWORD_CHECK_PATHS.includes(p) || isUnlock(p);
 
 export const TOO_MANY = { message: 'พยายามบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่' };
 
 /**
  * จำกัดจำนวนครั้งต่อ IP (`req.ip` ตาม `TRUST_PROXY`) ใน 15 นาที เฉพาะ POST ของ path ข้างบน — ด่านแรกกันเดารหัส;
- * api ต้องจำกัดต่อบัญชีอีกชั้น. นับในหน่วยความจำของแต่ละ instance (หลาย instance = เพดานรวมสูงขึ้นตามจำนวน)
+ * api ต้องจำกัดต่อบัญชีอีกชั้น. path ที่ตรวจรหัสผ่านนับเฉพาะครั้งที่ไม่ผ่าน (ตอบ ≥ 400). นับในหน่วยความจำของแต่ละ instance (หลาย instance = เพดานรวมสูงขึ้นตามจำนวน)
  */
 export function authRateLimiter(config: Config): RequestHandler {
   if (config.authRateLimit === 0) return (_req, _res, next) => next();
@@ -104,6 +112,8 @@ export function authRateLimiter(config: Config): RequestHandler {
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     skip: (req) => req.method !== 'POST' || !isRateLimited(req.path),
+    skipSuccessfulRequests: true,
+    requestWasSuccessful: (req, res) => res.statusCode < 400 && isPasswordCheck(req.path),
     // IPv6 นับเป็นกลุ่ม /56 (คนเดียวเปลี่ยนเลขท้ายได้ทั้งช่วง)
     keyGenerator: (req) =>
       `${ipKeyGenerator(req.ip ?? '0.0.0.0')}:${req.path.startsWith('/api/shifts/') ? 'unlock' : req.path}`,

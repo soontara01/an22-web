@@ -169,6 +169,9 @@ export async function startFakeApi(): Promise<FakeApi> {
         if (username === 'notoken') return json(res, 200, { user: { username } });
         return json(res, 200, { token: `shop-${username}`, user: { username } }, { 'Set-Cookie': 'api=1' });
       }
+      if (/^\/api\/shifts\/\d+\/unlock$/.test(url) && JSON.parse(body || '{}').password === 'bad') {
+        return json(res, 400, { message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+      }
       if (url === '/api/platform/auth/login') return json(res, 200, { token: 'platform-1', admin: { id: 1 } });
       if (url === '/api/me' || url === '/api/platform/me') {
         if (!auth || auth === 'Bearer shop-expired') return json(res, 401, { message: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' });
