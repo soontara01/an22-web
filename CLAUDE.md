@@ -16,6 +16,8 @@ web server ของระบบ An22: serve ไฟล์ build ของหน�
 
 ## คำสั่ง
 
+Node.js 24 (`.nvmrc`) — `nvm use` ก่อนรัน
+
 ```sh
 npm start                 # node --env-file-if-exists=.env src/server.ts
 npm run dev               # --watch + pino-pretty
@@ -36,7 +38,7 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 | `DIST_DIR`  | `../FrontEnd-An22/dist/frontend-an22/browser` | ต้องมี `index.html` ไม่งั้นไม่ start; ใน Docker = `/app/public`   |
 | `LOG_LEVEL` | `info`                                        | `fatal` / `error` / `warn` / `info` / `debug` / `trace` / `silent` |
 | `SESSION_STORE` | `memory` | `memory` = เครื่องเดียว, restart แล้วทุกคนหลุด; `mongodb` = หลาย instance / อยู่รอด restart |
-| `MONGODB_URI` | — | บังคับเมื่อ `SESSION_STORE=mongodb` (collection `sessions`, TTL index ลบเอง) |
+| `MONGODB_URI` | — | บังคับเมื่อ `SESSION_STORE=mongodb` (collection `sessions`, TTL index ลบเอง); หา MongoDB ไม่เจอเกิน `MONGO_SELECTION_TIMEOUT_MS` (5 วินาที) → 500 ไม่ค้าง |
 | `SESSION_SECRET` | — (**บังคับ**) | ≥ 32 ตัว: เซ็น cookie `an22.sid`, `XSRF-TOKEN` และเข้ารหัส session ใน MongoDB — เปลี่ยน = ทุกคน login ใหม่ |
 | `SESSION_IDLE_HOURS` | `12` | ไม่ใช้งานนานเท่านี้ → หลุด (ใช้งานอยู่ต่ออายุทุก request) |
 | `SESSION_MAX_DAYS` | `7` | นับจาก login เกินเท่านี้ → login ใหม่ |

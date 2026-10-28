@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { MongoClient } from 'mongodb';
 import type { Config } from '../src/config.ts';
-import { createSessionStore } from '../src/session.ts';
-import { Browser, type FakeApi, SESSION_SECRET, makeDist, startFakeApi, startWeb } from './fixtures.ts';
+import { MONGO_SELECTION_TIMEOUT_MS, createSessionStore } from '../src/session.ts';
+import { Browser, type FakeApi, SESSION_SECRET, deadPort, makeDist, startFakeApi, startWeb } from './fixtures.ts';
 
 const MONGO = process.env.TEST_MONGODB_URI;
 const LOGIN = { companyCode: 'DEMO', username: 'admin', password: 'admin' };
@@ -38,6 +38,24 @@ describe('session store', () => {
       await web2.close();
     }
   };
+
+  it('mongodb ต่อไม่ได้: ตอบ 500 ภายในไม่กี่วินาที ไม่ค้างรอ (V2-U-14)', async () => {
+    const web = await startWeb({
+      distDir: dist.distDir,
+      apiUrl: api.url,
+      sessionStore: 'mongodb',
+      mongodbUri: `mongodb://127.0.0.1:${await deadPort()}/an22`,
+    });
+    try {
+      const browser = await new Browser(web.url).open();
+      const started = Date.now();
+      const res = await browser.post('/api/auth/login', LOGIN);
+      assert.equal(res.status, 500);
+      assert.ok(Date.now() - started < MONGO_SELECTION_TIMEOUT_MS + 3_000, 'ไม่ควรรอเกิน timeout ที่ตั้งไว้');
+    } finally {
+      await web.close();
+    }
+  });
 
   it('memory: restart แล้วหลุด', async () => {
     assert.equal(await restartTest({ sessionStore: 'memory' }), 401);

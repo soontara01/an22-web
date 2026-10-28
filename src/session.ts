@@ -23,6 +23,12 @@ declare module 'express-session' {
 export const sessionCookieName = (config: Pick<Config, 'cookieSecure'>): string =>
   config.cookieSecure === true ? '__Host-an22.sid' : 'an22.sid';
 
+/**
+ * MongoDB หาไม่เจอ (ล่ม / ต่อไม่ได้) นานเท่านี้ → request ที่ใช้ session ได้ 500 ทันที แทนการค้างรอ
+ * ค่า default ของ driver (30 วินาทีต่อครั้ง — หน้าจอขาวราว 1 นาที, V2-U-14); mongo กลับมาแล้วใช้ต่อได้เอง
+ */
+export const MONGO_SELECTION_TIMEOUT_MS = 5_000;
+
 export interface SessionStore {
   store: session.Store;
   close: () => Promise<void>;
@@ -32,7 +38,9 @@ export interface SessionStore {
 export function createSessionStore(config: Config): SessionStore {
   const ttlMs = config.sessionIdleHours * 3_600_000;
   if (config.sessionStore === 'mongodb') {
-    const client = new MongoClient(config.mongodbUri!);
+    const client = new MongoClient(config.mongodbUri!, {
+      serverSelectionTimeoutMS: MONGO_SELECTION_TIMEOUT_MS,
+    });
     // TTL index ให้ MongoDB ลบ session ที่หมดอายุเอง — สร้างเองเพื่อรอให้เสร็จก่อนปิด client ได้
     const indexed = client
       .db()
