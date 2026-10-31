@@ -25,9 +25,12 @@ describe('session store', () => {
     const config = { distDir: dist.distDir, apiUrl: api.url, ...store };
     const web1 = await startWeb(config);
     const browser = await new Browser(web1.url).open();
-    await browser.post('/api/auth/login', LOGIN);
-    assert.equal((await browser.get('/api/me')).status, 200);
-    await web1.close();
+    try {
+      await browser.post('/api/auth/login', LOGIN);
+      assert.equal((await browser.get('/api/me')).status, 200);
+    } finally {
+      await web1.close(); // ล้มกลางทาง (เช่น MongoDB ไม่ขึ้น) ต้องปิดด้วย ไม่งั้น node --test ค้างไม่จบ
+    }
 
     const web2 = await startWeb(config);
     try {
@@ -62,7 +65,7 @@ describe('session store', () => {
   });
 
   it('mongodb: restart แล้วยัง login อยู่ และไม่มี token แบบอ่านออกใน DB', { skip: MONGO ? false : 'ตั้ง TEST_MONGODB_URI (docker compose up -d mongo)' }, async () => {
-    const client = new MongoClient(MONGO!);
+    const client = new MongoClient(MONGO!, { serverSelectionTimeoutMS: MONGO_SELECTION_TIMEOUT_MS });
     await client.connect();
     const sessions = client.db().collection('sessions');
     await sessions.deleteMany({});
@@ -84,9 +87,12 @@ describe('session store', () => {
     const config = { distDir: dist.distDir, apiUrl: api.url, sessionStore: 'mongodb' as const, mongodbUri: MONGO! };
     const web1 = await startWeb(config);
     const browser = await new Browser(web1.url).open();
-    await browser.post('/api/auth/login', LOGIN);
-    assert.equal((await browser.get('/api/me')).status, 200);
-    await web1.close();
+    try {
+      await browser.post('/api/auth/login', LOGIN);
+      assert.equal((await browser.get('/api/me')).status, 200);
+    } finally {
+      await web1.close();
+    }
     const other = createSessionStore({ ...web1.config, sessionSecret: SESSION_SECRET.replace('test', 'evil') });
     const web2 = await startWeb({ ...config, sessionSecret: SESSION_SECRET.replace('test', 'evil') }, other.store);
     try {

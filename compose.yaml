@@ -4,7 +4,7 @@
 # web ใน container ด้วย (build จาก ./public — npm run docker:build ก่อน): SESSION_SECRET=... docker compose --profile web up -d
 services:
   mongo:
-    image: mongo:8.0
+    image: mongo:8.2 # 8.0 เปิดไม่ได้บน Linux kernel ≥ 6.19 (SERVER-121912)
     ports:
       - '127.0.0.1:27017:27017'
     volumes:
