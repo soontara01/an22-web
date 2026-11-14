@@ -180,6 +180,10 @@ export async function startFakeApi(): Promise<FakeApi> {
       if (/^\/api\/shifts\/\d+\/unlock$/.test(url) && JSON.parse(body || '{}').password === 'bad') {
         return json(res, 400, { message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
       }
+      // E58: เปลี่ยนเครื่อง Authenticator — รหัสผ่าน bad → 400
+      if (url === '/api/me/mfa/change' && JSON.parse(body || '{}').password === 'bad') {
+        return json(res, 400, { message: 'รหัสผ่านไม่ถูกต้อง' });
+      }
       // platform admin ต้องผ่านรหัส Authenticator เสมอ (E56)
       if (url === '/api/platform/auth/login') return json(res, 200, { challenge: 'pmfa-1', mfa: 'verify' });
       if (url === '/api/platform/auth/mfa/verify') {

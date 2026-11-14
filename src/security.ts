@@ -88,6 +88,8 @@ export const RATE_LIMITED_PATHS = [
   '/api/auth/verify',
   '/api/platform/auth/login',
   '/api/platform/auth/mfa/verify',
+  // E58: เปลี่ยนเครื่อง Authenticator — รหัสผ่าน + รหัส 6 หลักของเครื่องเดิม
+  '/api/me/mfa/change',
 ];
 const isUnlock = (p: string) => /^\/api\/shifts\/\d+\/unlock$/.test(p);
 const isRateLimited = (p: string) => RATE_LIMITED_PATHS.includes(p) || isUnlock(p);
@@ -103,6 +105,7 @@ const PASSWORD_CHECK_PATHS = [
   '/api/auth/verify',
   '/api/platform/auth/login',
   '/api/platform/auth/mfa/verify',
+  '/api/me/mfa/change',
 ];
 const isPasswordCheck = (p: string) => PASSWORD_CHECK_PATHS.includes(p) || isUnlock(p);
 
