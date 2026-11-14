@@ -74,7 +74,7 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 3. **login / logout (BFF, `src/auth.ts`)**: `POST /api/auth/login`, `/api/auth/signup`, `/api/platform/auth/login` → ส่งต่อ api → 2xx มี `token`:
    เปลี่ยน session id, เก็บ token ในช่องของมัน (คงอีกช่อง), ตอบ**โดยไม่มี `token`**; ไม่สำเร็จ → คำตอบของ api ตามเดิม; api ตอบ 2xx ไม่มี token → 502;
    `POST /api/auth/logout`, `/api/platform/auth/logout` → web ตอบ `null` เอง (ลบช่อง; ไม่เหลือ = ทำลาย session + ลบ cookie)
-   - **ขั้นรหัส Microsoft Authenticator** (ร้าน E55 / platform admin E56 — platform ทุกครั้ง): `POST /api/auth/login` / `/api/platform/auth/login` ตอบ 2xx มี `challenge`
+   - **ขั้นรหัส Microsoft Authenticator** (ร้าน E55 / E57 และ platform admin E56 — ทุก login): `POST /api/auth/login` / `/api/auth/signup` / `/api/platform/auth/login` ตอบ 2xx มี `challenge`
      ไม่มี `token` → เปลี่ยน session id, เก็บ challenge ในช่อง `mfaToken` / `platformMfaToken` (คง token และ challenge อื่นทั้งหมด), ตอบโดยไม่มี `challenge`;
      `POST /api/auth/mfa/verify` / `/api/platform/auth/mfa/verify` → ส่งต่อด้วย `Authorization: Bearer <challenge ของฝั่งนั้น>` (ไม่มี → `400`
      "หมดเวลายืนยันรหัส กรุณาเข้าสู่ระบบใหม่" ไม่ถึง api) → ได้ `token` = login สำเร็จแบบข้างบน (challenge ของฝั่งนั้นหาย, อีกฝั่งคงไว้); logout ลบ challenge ของฝั่งนั้นด้วย

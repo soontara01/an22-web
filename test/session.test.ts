@@ -81,6 +81,18 @@ describe('session ของ login (BFF, E48)', () => {
     assert.equal(api.seen.length, 0);
   });
 
+  it('signup ที่ตอบ challenge (E57: owner ผูกก่อนเข้าระบบ) เก็บแบบเดียวกับ login', async () => {
+    const res = await browser.post('/api/auth/signup', { companyCode: 'NEW', owner: {}, username: 'mfa' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { mfa: 'verify' });
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), undefined);
+    const ok = await browser.post('/api/auth/mfa/verify', { code: '123456' });
+    assert.equal(ok.status, 200);
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), 'Bearer shop-mfa');
+  });
+
   it('logout ระหว่างรอรหัสลบ challenge ด้วย', async () => {
     await browser.post('/api/auth/login', { ...LOGIN, username: 'mfa' });
     await browser.post('/api/auth/logout', {});
