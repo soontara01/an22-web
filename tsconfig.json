@@ -1,5 +1,5 @@
 {
-  // ไม่มีขั้น compile — Node 24 รัน .ts ตรงด้วย type stripping; tsc ใช้ตรวจ type อย่างเดียว
+  // ไม่มีขั้น compile — Node 26 รัน .ts ตรงด้วย type stripping; tsc ใช้ตรวจ type อย่างเดียว
   "compilerOptions": {
     "target": "es2024",
     "module": "nodenext",
