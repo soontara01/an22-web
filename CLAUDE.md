@@ -8,7 +8,7 @@ web server ของระบบ An22: serve ไฟล์ build ของหน�
 
 ## เครื่องมือ
 
-- Node 24 + Express 5, **TypeScript รันตรงด้วย type stripping** — ไม่มีขั้น compile, `tsc` ใช้ตรวจ type อย่างเดียว
+- Node 26 + Express 5, **TypeScript รันตรงด้วย type stripping** — ไม่มีขั้น compile, `tsc` ใช้ตรวจ type อย่างเดียว
   - ใช้ได้แค่ syntax ที่ลบทิ้งได้ (`erasableSyntaxOnly`): ห้าม `enum`, `namespace`, parameter property; import ไฟล์ในโปรเจกต์ใส่ `.ts`, import type ใช้ `import type`
 - proxy: `http-proxy-middleware` (v4), log: `pino` + `pino-http` (JSON), gzip: `compression`
 - session: `express-session` + store `memorystore` (memory) / `connect-mongo` + `mongodb` (MongoDB), cookie: `cookie`
@@ -16,7 +16,7 @@ web server ของระบบ An22: serve ไฟล์ build ของหน�
 
 ## คำสั่ง
 
-Node.js 24 (`.nvmrc`) — `nvm use` ก่อนรัน
+Node.js 26.13.1 (`.nvmrc`) — `nvm use` ก่อนรัน
 
 ```sh
 npm start                 # node --env-file-if-exists=.env src/server.ts
@@ -108,7 +108,7 @@ docker run -d -p 4000:4000 -e API_URL=http://<api>:8080 -e SESSION_SECRET=… \
   -e SESSION_STORE=mongodb -e MONGODB_URI=mongodb://<mongo>:27017/an22 an22-web:<tag>
 ```
 
-image: `node:24-alpine`, user `node`, `HEALTHCHECK` เรียก `/healthz`; มากกว่า 1 instance ต้องใช้ `SESSION_STORE=mongodb`;
+image: `node:26.13.1-alpine`, user `node`, `HEALTHCHECK` เรียก `/healthz`; มากกว่า 1 instance ต้องใช้ `SESSION_STORE=mongodb`;
 หลัง load balancer / reverse proxy ที่ทำ https ให้ตั้ง `TRUST_PROXY` ให้ตรง (ไม่งั้น cookie ไม่ได้ Secure); compose รวม api + PostgreSQL ทำตอน C2
 
 ## Git
