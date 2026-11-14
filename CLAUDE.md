@@ -74,7 +74,10 @@ build หน้าบ้านก่อน: `cd ../FrontEnd-An22 && npm run buil
 3. **login / logout (BFF, `src/auth.ts`)**: `POST /api/auth/login`, `/api/auth/signup`, `/api/platform/auth/login` → ส่งต่อ api → 2xx มี `token`:
    เปลี่ยน session id, เก็บ token ในช่องของมัน (คงอีกช่อง), ตอบ**โดยไม่มี `token`**; ไม่สำเร็จ → คำตอบของ api ตามเดิม; api ตอบ 2xx ไม่มี token → 502;
    `POST /api/auth/logout`, `/api/platform/auth/logout` → web ตอบ `null` เอง (ลบช่อง; ไม่เหลือ = ทำลาย session + ลบ cookie)
-   - **จำกัดจำนวนครั้ง** (`AUTH_RATE_LIMIT`, ต่อ IP + path, 15 นาที): POST ของ login / signup / forgot / reset / `auth/verify` / platform login / `shifts/:id/unlock` — path ที่แค่ตรวจรหัส (login, `auth/verify`, platform login, unlock) นับเฉพาะครั้งที่ตอบ ≥ 400 (`requestWasSuccessful`, C3-7: ร้านหลายคน IP เดียวไม่ชนเพดาน), signup / forgot / reset นับทุกครั้ง
+   - **ขั้นรหัส Microsoft Authenticator** (E55): `POST /api/auth/login` ตอบ 2xx มี `challenge` ไม่มี `token` → เปลี่ยน session id, เก็บ challenge ในช่อง `mfaToken`
+     (คงช่องร้าน / platform), ตอบโดยไม่มี `challenge`; `POST /api/auth/mfa/verify` → ส่งต่อด้วย `Authorization: Bearer <mfaToken>` (ไม่มี → `400` "หมดเวลายืนยันรหัส กรุณาเข้าสู่ระบบใหม่"
+     ไม่ถึง api) → ได้ `token` = login สำเร็จแบบข้างบน (mfaToken หายไปกับ session เดิม); logout ร้านลบ `mfaToken` ด้วย
+   - **จำกัดจำนวนครั้ง** (`AUTH_RATE_LIMIT`, ต่อ IP + path, 15 นาที): POST ของ login / `auth/mfa/verify` / signup / forgot / reset / `auth/verify` / platform login / `shifts/:id/unlock` — path ที่แค่ตรวจรหัส (login, `auth/mfa/verify`, `auth/verify`, platform login, unlock) นับเฉพาะครั้งที่ตอบ ≥ 400 (`requestWasSuccessful`, C3-7: ร้านหลายคน IP เดียวไม่ชนเพดาน), signup / forgot / reset นับทุกครั้ง
      → เกิน = `429 {"message":"พยายามบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่"}` ไม่ถึง api; นับในหน่วยความจำของแต่ละ instance
 4. **proxy `/api`** (`/api` และ `/api/...` เท่านั้น — `/apix` ไม่ใช่): **คง `/api` ไว้** เหมือน `proxy.conf.json` ของหน้าบ้าน;
    ติดที่ root ด้วย `pathFilter` (อย่าเปลี่ยนเป็น `app.use('/api', …)` — Express จะตัด `/api` ทิ้ง); body / header (`X-Branch-Id`, `X-Terminal-Id`) ส่งแบบ stream ไม่แตะ

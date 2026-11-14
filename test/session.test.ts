@@ -25,6 +25,49 @@ describe('session ของ login (BFF, E48)', () => {
   });
   const authSeen = (url: string) => api.seen.filter((s) => s.url === url).at(-1)?.headers.authorization;
 
+  it('ขั้นรหัส Authenticator (E55): challenge อยู่ใน session ไม่ถึง browser, verify ส่งเป็น Bearer แล้วได้ session ร้าน', async () => {
+    const login = await browser.post('/api/auth/login', { ...LOGIN, username: 'mfa' });
+    assert.equal(login.status, 200);
+    assert.deepEqual(await login.json(), { mfa: 'verify' });
+    const firstSid = browser.cookies.get('an22.sid');
+    assert.ok(firstSid);
+    // ยังไม่ได้ login: challenge ใช้แทน token ร้านไม่ได้
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), undefined);
+
+    const wrong = await browser.post('/api/auth/mfa/verify', { code: '000000' });
+    assert.equal(wrong.status, 400);
+    assert.deepEqual(await wrong.json(), { message: 'รหัสยืนยันไม่ถูกต้อง' });
+    assert.equal(authSeen('/api/auth/mfa/verify'), 'Bearer mfa-1');
+
+    const ok = await browser.post('/api/auth/mfa/verify', { code: '123456' });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { user: { username: 'mfa' } });
+    assert.notEqual(browser.cookies.get('an22.sid'), firstSid); // session id ใหม่
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), 'Bearer shop-mfa');
+    // challenge ใช้ไปแล้ว — verify อีกครั้ง web ตอบ 400 เองไม่ถึง api
+    api.seen.length = 0;
+    const again = await browser.post('/api/auth/mfa/verify', { code: '123456' });
+    assert.equal(again.status, 400);
+    assert.deepEqual(await again.json(), { message: 'หมดเวลายืนยันรหัส กรุณาเข้าสู่ระบบใหม่' });
+    assert.equal(api.seen.length, 0);
+  });
+
+  it('ขั้นรหัสโดยไม่มี login ที่รอ = 400 (ไม่ใช่ 401), Authorization ของ browser ไม่ถูกใช้แทน', async () => {
+    const res = await browser.post('/api/auth/mfa/verify', { code: '123456' }, { Authorization: 'Bearer mfa-1' });
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { message: 'หมดเวลายืนยันรหัส กรุณาเข้าสู่ระบบใหม่' });
+    assert.equal(api.seen.length, 0);
+  });
+
+  it('logout ระหว่างรอรหัสลบ challenge ด้วย', async () => {
+    await browser.post('/api/auth/login', { ...LOGIN, username: 'mfa' });
+    await browser.post('/api/auth/logout', {});
+    const res = await browser.post('/api/auth/mfa/verify', { code: '123456' });
+    assert.equal(res.status, 400);
+  });
+
   it('login: ส่งต่อ api, เก็บ token ใน session, ตอบโดยไม่มี token + cookie httpOnly', async () => {
     const res = await browser.post('/api/auth/login', LOGIN);
     assert.equal(res.status, 200);

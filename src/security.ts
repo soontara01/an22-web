@@ -81,6 +81,7 @@ export function redactUrl(url: string | undefined): string | undefined {
 /** path ที่ตรวจรหัสผ่าน / ส่งอีเมล — เดารหัสได้ถ้าไม่จำกัด */
 export const RATE_LIMITED_PATHS = [
   '/api/auth/login',
+  '/api/auth/mfa/verify',
   '/api/auth/signup',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
@@ -95,7 +96,7 @@ const isRateLimited = (p: string) => RATE_LIMITED_PATHS.includes(p) || isUnlock(
  * (สลับคนขาย, ปลดล็อกหน้าจอ, เปลี่ยนกะ) ไม่ชนเพดานในวันปกติ. สมัคร / ลืม-ตั้งรหัสผ่านนับทุกครั้ง
  * (ครั้งที่ "สำเร็จ" สร้างบริษัท / ส่งอีเมล)
  */
-const PASSWORD_CHECK_PATHS = ['/api/auth/login', '/api/auth/verify', '/api/platform/auth/login'];
+const PASSWORD_CHECK_PATHS = ['/api/auth/login', '/api/auth/mfa/verify', '/api/auth/verify', '/api/platform/auth/login'];
 const isPasswordCheck = (p: string) => PASSWORD_CHECK_PATHS.includes(p) || isUnlock(p);
 
 export const TOO_MANY = { message: 'พยายามบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่' };
