@@ -148,7 +148,9 @@ export interface FakeApi {
 
 /**
  * api ปลอม: จำทุก request แล้วตอบตาม path —
- * login: `{ token: 'shop-<username>', user }` (password `bad` → 401, username `notoken` → ไม่มี token),
+ * login: `{ token: 'shop-<username>', user }` (password `bad` → 401, username `notoken` → ไม่มี token,
+ * username `mfa` → `{ challenge: 'mfa-1', mfa: 'verify' }`), `/api/auth/mfa/verify`: Bearer `mfa-1` + code `123456` → token
+ * `shop-mfa`, code อื่น → 400, challenge อื่น → 400 หมดเวลา,
  * platform login: `{ token: 'platform-1', admin }`, `/api/me` / `/api/platform/me`: 401 ถ้าไม่มี token หรือ token = `shop-expired`,
  * `/api/nope*` → 404, อื่น ๆ → 200 echo
  */
@@ -167,7 +169,13 @@ export async function startFakeApi(): Promise<FakeApi> {
         const { username, password } = JSON.parse(body || '{}');
         if (password === 'bad') return json(res, 401, { message: 'รหัสบริษัท ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง' });
         if (username === 'notoken') return json(res, 200, { user: { username } });
+        if (username === 'mfa') return json(res, 200, { challenge: 'mfa-1', mfa: 'verify' });
         return json(res, 200, { token: `shop-${username}`, user: { username } }, { 'Set-Cookie': 'api=1' });
+      }
+      if (url === '/api/auth/mfa/verify') {
+        if (auth !== 'Bearer mfa-1') return json(res, 400, { message: 'หมดเวลายืนยันรหัส กรุณาเข้าสู่ระบบใหม่' });
+        if (JSON.parse(body || '{}').code !== '123456') return json(res, 400, { message: 'รหัสยืนยันไม่ถูกต้อง' });
+        return json(res, 200, { token: 'shop-mfa', user: { username: 'mfa' } });
       }
       if (/^\/api\/shifts\/\d+\/unlock$/.test(url) && JSON.parse(body || '{}').password === 'bad') {
         return json(res, 400, { message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
