@@ -54,11 +54,43 @@ describe('session ของ login (BFF, E48)', () => {
     assert.equal(api.seen.length, 0);
   });
 
+  it('platform admin (E56): challenge แยกช่องจากของร้าน ใช้กับ path ของ platform เท่านั้น', async () => {
+    await browser.post('/api/auth/login', { ...LOGIN, username: 'mfa' });
+    const step1 = await browser.post('/api/platform/auth/login', { username: 'platform', password: 'platform' });
+    assert.deepEqual(await step1.json(), { mfa: 'verify' });
+    await browser.get('/api/platform/me');
+    assert.equal(authSeen('/api/platform/me'), undefined); // ยังไม่ได้ login
+    // challenge ของร้านยังอยู่ ไม่ถูกทับ
+    await browser.post('/api/auth/mfa/verify', { code: '123456' });
+    assert.equal(authSeen('/api/auth/mfa/verify'), 'Bearer mfa-1');
+    const wrong = await browser.post('/api/platform/auth/mfa/verify', { code: '000000' });
+    assert.equal(wrong.status, 400);
+    assert.equal(authSeen('/api/platform/auth/mfa/verify'), 'Bearer pmfa-1');
+    const ok = await browser.post('/api/platform/auth/mfa/verify', { code: '123456' });
+    assert.deepEqual(await ok.json(), { admin: { id: 1 } });
+    await browser.get('/api/platform/me');
+    assert.equal(authSeen('/api/platform/me'), 'Bearer platform-1');
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), 'Bearer shop-mfa'); // ร้านยัง login อยู่
+  });
+
   it('ขั้นรหัสโดยไม่มี login ที่รอ = 400 (ไม่ใช่ 401), Authorization ของ browser ไม่ถูกใช้แทน', async () => {
     const res = await browser.post('/api/auth/mfa/verify', { code: '123456' }, { Authorization: 'Bearer mfa-1' });
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { message: 'หมดเวลายืนยันรหัส กรุณาเข้าสู่ระบบใหม่' });
     assert.equal(api.seen.length, 0);
+  });
+
+  it('signup ที่ตอบ challenge (E57: owner ผูกก่อนเข้าระบบ) เก็บแบบเดียวกับ login', async () => {
+    const res = await browser.post('/api/auth/signup', { companyCode: 'NEW', owner: {}, username: 'mfa' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { mfa: 'verify' });
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), undefined);
+    const ok = await browser.post('/api/auth/mfa/verify', { code: '123456' });
+    assert.equal(ok.status, 200);
+    await browser.get('/api/me');
+    assert.equal(authSeen('/api/me'), 'Bearer shop-mfa');
   });
 
   it('logout ระหว่างรอรหัสลบ challenge ด้วย', async () => {
@@ -95,7 +127,9 @@ describe('session ของ login (BFF, E48)', () => {
 
   it('ร้าน / platform แยกช่อง; logout ลบเฉพาะช่องตัวเอง แล้วทำลาย session เมื่อไม่เหลือ', async () => {
     await browser.post('/api/auth/login', LOGIN);
-    const platform = await browser.post('/api/platform/auth/login', { username: 'platform', password: 'platform' });
+    const step1 = await browser.post('/api/platform/auth/login', { username: 'platform', password: 'platform' });
+    assert.deepEqual(await step1.json(), { mfa: 'verify' });
+    const platform = await browser.post('/api/platform/auth/mfa/verify', { code: '123456' });
     assert.deepEqual(await platform.json(), { admin: { id: 1 } });
     await browser.get('/api/platform/me');
     assert.equal(authSeen('/api/platform/me'), 'Bearer platform-1');
@@ -116,6 +150,7 @@ describe('session ของ login (BFF, E48)', () => {
 
   it('เปลี่ยน session id ทุกครั้งที่ login (กัน session fixation)', async () => {
     await browser.post('/api/platform/auth/login', { username: 'platform', password: 'platform' });
+    await browser.post('/api/platform/auth/mfa/verify', { code: '123456' });
     const before = browser.cookies.get('an22.sid');
     await browser.post('/api/auth/login', LOGIN);
     assert.notEqual(browser.cookies.get('an22.sid'), before);

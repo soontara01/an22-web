@@ -124,6 +124,14 @@ describe('จำกัดจำนวนครั้งเดารหัส (AU
     for (let i = 0; i < 3; i++) await browser.post('/api/shifts/7/unlock', { password: 'bad' });
     assert.equal((await browser.post('/api/shifts/8/unlock', {})).status, 429);
   });
+
+  it('เปลี่ยนเครื่อง Authenticator (/api/me/mfa/change) ก็ถูกจำกัด — นับเฉพาะครั้งที่ไม่ผ่าน (E58)', async () => {
+    const browser = await new Browser(web.url).open();
+    for (let i = 0; i < 3; i++) {
+      assert.equal((await browser.post('/api/me/mfa/change', { password: 'bad' })).status, 400);
+    }
+    assert.equal((await browser.post('/api/me/mfa/change', { password: 'ok' })).status, 429);
+  });
 });
 
 describe('นับเฉพาะครั้งที่รหัสไม่ผ่าน (C3-7)', () => {

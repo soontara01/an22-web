@@ -13,6 +13,8 @@ declare module 'express-session' {
     platformToken?: string;
     /** challenge ของ login ที่รอรหัส Microsoft Authenticator (E55, JWT aud=mfa อายุ 5 นาที) — ส่งเป็น Bearer ให้ `/api/auth/mfa/verify` เท่านั้น */
     mfaToken?: string;
+    /** challenge ของ platform admin ที่รอรหัส (E56 — ทุก login ของ platform) — ส่งให้ `/api/platform/auth/mfa/verify` เท่านั้น */
+    platformMfaToken?: string;
     /** ms ตอน login — เกิน `sessionMaxDays` ต้อง login ใหม่ */
     createdAt?: number;
   }
